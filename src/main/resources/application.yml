@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/streamforge
+    username: postgres
+    password: karan143
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+
+server:
+  port: 8080
+
+jwt:
+  secret: myVeryStrongSecretKeyForJwtTokenGeneration123456
+  expiration: 86400000
+
+logging:
+  level:
+    root: INFO
