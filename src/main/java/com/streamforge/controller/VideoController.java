@@ -7,6 +7,7 @@ import com.streamforge.service.VideoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.http.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -24,6 +25,9 @@ public class VideoController {
     /*
      * Upload Video
      */
+    @PreAuthorize(
+            "hasAnyRole('ADMIN', 'MODERATOR')"
+    )
     @PostMapping("/upload")
     public ResponseEntity<VideoResponse> uploadVideo(
             @RequestParam("title") String title,

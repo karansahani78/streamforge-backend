@@ -31,3 +31,25 @@ build/
 
 ### VS Code ###
 .vscode/
+# Runtime generated files
+uploads/
+processed/
+temp/
+temp-stream/
+
+# Logs
+logs/
+*.log
+
+# Build
+target/
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+
+# Environment
+.env
