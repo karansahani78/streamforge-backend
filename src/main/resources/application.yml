@@ -1,8 +1,8 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/streamforge
-    username: postgres
-    password: karan143
+    username: ${USERNAME}
+    password: ${PASSWORD}
 
   jpa:
     hibernate:
@@ -31,7 +31,7 @@ server:
   port: 8080
 
 jwt:
-  secret: myVeryStrongSecretKeyForJwtTokenGeneration123456
+  secret: ${secret-key}
   expiration: 86400000
 
 logging:
