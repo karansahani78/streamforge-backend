@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Data
+@NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class VideoResponse {
@@ -22,4 +23,11 @@ public class VideoResponse {
     private String contentType;
 
     private LocalDateTime uploadedAt;
+
+    private boolean processed;
+
+    private String processedPath;
+
+
+    private String thumbnailPath;
 }
