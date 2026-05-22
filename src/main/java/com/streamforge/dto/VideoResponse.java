@@ -23,6 +23,7 @@ public class VideoResponse {
     private String contentType;
 
     private LocalDateTime uploadedAt;
+    private String videoUrl;
 
     private boolean processed;
 

@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/db_name
-    username: ${USERNAME}
-    password: ${PASSWORD}
+    url: jdbc:postgresql://localhost:5432/streamforge
+    username: postgres
+    password: karan143
 
   jpa:
     hibernate:
@@ -31,9 +31,15 @@ server:
   port: 8080
 
 jwt:
-  secret: ${SECRET-KEY}
+  secret: myVeryStrongSecretKeyForJwtTokenGeneration123456
   expiration: 86400000
 
 logging:
   level:
     root: INFO
+
+minio:
+  url: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket-name: streamforge-videos

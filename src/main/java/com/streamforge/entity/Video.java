@@ -22,7 +22,7 @@ public class Video implements Serializable {
 
     private String fileName;
 
-    private String filePath;
+    private String objectKey;
 
     private String contentType;
 

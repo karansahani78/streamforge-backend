@@ -13,6 +13,6 @@ import java.io.Serializable;
 @Builder
 public class VideoProcessingMessage implements Serializable {
     private Long videoId;
-    private String filePath;
+    private String objectKey;
     private String fileName;
 }

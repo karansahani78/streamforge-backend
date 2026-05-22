@@ -10,9 +10,7 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +18,11 @@ import java.nio.file.Paths;
 public class VideoEventConsumer {
 
     private final VideoRepository videoRepository;
+
+    private final ObjectStorageService objectStorageService;
+
+    private static final String TEMP_DIR =
+            "temp/";
 
     private static final String PROCESSED_DIR =
             "processed/";
@@ -38,7 +41,9 @@ public class VideoEventConsumer {
 
         try {
 
-            // Fetch video from DB
+            /*
+             * Fetch video from DB
+             */
             Video video =
                     videoRepository.findById(
                                     message.getVideoId()
@@ -49,28 +54,37 @@ public class VideoEventConsumer {
                                     )
                             );
 
-            // Create processed directory
-            Path processedPath =
-                    Paths.get(PROCESSED_DIR);
+            /*
+             * Create temp and processed dirs
+             */
+            Files.createDirectories(
+                    Paths.get(TEMP_DIR)
+            );
 
-            if (!Files.exists(processedPath)) {
+            Files.createDirectories(
+                    Paths.get(PROCESSED_DIR)
+            );
 
-                Files.createDirectories(
-                        processedPath
-                );
-            }
+            /*
+             * Download original video from MinIO
+             */
+            String tempInputPath =
+                    TEMP_DIR
+                            + message.getFileName();
 
-            // Original uploaded file
-            String inputPath =
-                    message.getFilePath();
+            objectStorageService.downloadFile(
+                    message.getObjectKey(),
+                    tempInputPath
+            );
 
-            // Processed output file
+            /*
+             * Processed output paths
+             */
             String outputPath =
                     PROCESSED_DIR
                             + message.getVideoId()
                             + "_720p.mp4";
 
-            // Thumbnail output
             String thumbnailPath =
                     PROCESSED_DIR
                             + message.getVideoId()
@@ -79,12 +93,11 @@ public class VideoEventConsumer {
             /*
              * Video Transcoding
              */
-
             ProcessBuilder transcodingProcessBuilder =
                     new ProcessBuilder(
                             "ffmpeg",
                             "-i",
-                            inputPath,
+                            tempInputPath,
                             "-vf",
                             "scale=-1:720",
                             outputPath
@@ -117,12 +130,11 @@ public class VideoEventConsumer {
             /*
              * Thumbnail Generation
              */
-
             ProcessBuilder thumbnailProcessBuilder =
                     new ProcessBuilder(
                             "ffmpeg",
                             "-i",
-                            inputPath,
+                            tempInputPath,
                             "-ss",
                             "00:00:05",
                             "-vframes",
@@ -155,30 +167,65 @@ public class VideoEventConsumer {
             );
 
             /*
+             * Upload processed video back to MinIO
+             */
+            String processedObjectKey =
+                    objectStorageService
+                            .uploadProcessedFile(
+                                    outputPath,
+                                    "processed/"
+                                            + message.getVideoId()
+                                            + "_720p.mp4"
+                            );
+
+            /*
+             * Upload thumbnail back to MinIO
+             */
+            String thumbnailObjectKey =
+                    objectStorageService
+                            .uploadProcessedFile(
+                                    thumbnailPath,
+                                    "thumbnails/"
+                                            + message.getVideoId()
+                                            + "_thumbnail.jpg"
+                            );
+
+            /*
              * Update DB
              */
-
             video.setProcessed(true);
 
             video.setProcessedPath(
-                    outputPath
+                    processedObjectKey
             );
 
             video.setThumbnailPath(
-                    thumbnailPath
+                    thumbnailObjectKey
             );
 
             videoRepository.save(video);
+
+            /*
+             * Cleanup temp files
+             */
+            Files.deleteIfExists(
+                    Paths.get(tempInputPath)
+            );
+
+            Files.deleteIfExists(
+                    Paths.get(outputPath)
+            );
+
+            Files.deleteIfExists(
+                    Paths.get(thumbnailPath)
+            );
 
             log.info(
                     "Video processing completed successfully: {}",
                     message.getVideoId()
             );
 
-        } catch (
-                IOException
-                | InterruptedException e
-        ) {
+        } catch (Exception e) {
 
             log.error(
                     "Error processing video: {}",

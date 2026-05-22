@@ -5,21 +5,23 @@ import com.streamforge.dto.VideoResponse;
 import com.streamforge.entity.Video;
 import com.streamforge.exception.VideoNotFoundException;
 import com.streamforge.repository.VideoRepository;
+import io.minio.errors.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.UrlResource;
 import org.springframework.core.io.support.ResourceRegion;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.cache.CacheManager;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -27,48 +29,43 @@ import java.util.UUID;
 public class VideoService {
 
     private final VideoRepository videoRepository;
+
     private final CacheManager cacheManager;
+
+    private final ObjectStorageService objectStorageService;
+
     private final VideoEventProducer videoEventProducer;
 
-    private static final Path UPLOAD_PATH =
-            Paths.get("uploads");
+    private static final String TEMP_STREAM_DIR =
+            "temp-stream/";
 
     @CacheEvict(value = "videos", allEntries = true)
     public VideoResponse uploadVideo(
             String title,
             MultipartFile file
-    ) throws IOException {
+    ) throws ServerException,
+            InsufficientDataException,
+            ErrorResponseException,
+            IOException,
+            NoSuchAlgorithmException,
+            InvalidKeyException,
+            InvalidResponseException,
+            XmlParserException,
+            InternalException {
 
-        // Create uploads directory if not exists
-        if (!Files.exists(UPLOAD_PATH)) {
+        /*
+         * Upload original file to MinIO
+         */
+        String objectKey =
+                objectStorageService.uploadFile(file);
 
-            Files.createDirectories(
-                    UPLOAD_PATH
-            );
-        }
-
-        // Generate unique filename
-        String fileName =
-                UUID.randomUUID()
-                        + "_"
-                        + file.getOriginalFilename();
-
-        // Final file path
-        Path filePath =
-                UPLOAD_PATH.resolve(fileName);
-
-        // Copy file to uploads directory
-        Files.copy(
-                file.getInputStream(),
-                filePath,
-                StandardCopyOption.REPLACE_EXISTING
-        );
-
-        // Save metadata in DB
+        /*
+         * Save metadata in PostgreSQL
+         */
         Video video = Video.builder()
                 .title(title)
-                .fileName(fileName)
-                .filePath(filePath.toString())
+                .fileName(file.getOriginalFilename())
+                .objectKey(objectKey)
                 .contentType(file.getContentType())
                 .fileSize(file.getSize())
                 .uploadedAt(LocalDateTime.now())
@@ -79,19 +76,44 @@ public class VideoService {
 
         Video savedVideo =
                 videoRepository.save(video);
-        cacheManager.getCache("videos").clear();
 
+        /*
+         * Clear Redis cache
+         */
+        if (cacheManager.getCache("videos") != null) {
 
-        // Publish RabbitMQ event
+            cacheManager
+                    .getCache("videos")
+                    .clear();
+        }
+
+        /*
+         * Publish RabbitMQ event
+         */
         videoEventProducer.sendVideoProcessingEvent(
                 VideoProcessingMessage.builder()
                         .videoId(savedVideo.getId())
                         .fileName(savedVideo.getFileName())
-                        .filePath(savedVideo.getFilePath())
+                        .objectKey(savedVideo.getObjectKey())
                         .build()
         );
 
-        // Return response
+        log.info(
+                "Video uploaded successfully with ID: {}",
+                savedVideo.getId()
+        );
+
+        /*
+         * Generate secure MinIO URL
+         */
+        String videoUrl =
+                objectStorageService.getVideoUrl(
+                        savedVideo.getObjectKey()
+                );
+
+        /*
+         * Return API response
+         */
         return VideoResponse.builder()
                 .id(savedVideo.getId())
                 .title(savedVideo.getTitle())
@@ -102,20 +124,38 @@ public class VideoService {
                 .processed(savedVideo.getProcessed())
                 .processedPath(savedVideo.getProcessedPath())
                 .thumbnailPath(savedVideo.getThumbnailPath())
+                .videoUrl(videoUrl)
                 .build();
     }
 
     @Cacheable("videos")
     public List<Video> getAllVideos() {
 
+        log.info(
+                "Fetching videos from database"
+        );
+
         return videoRepository.findAll();
     }
 
-    // Stream video
+    public Video getVideoById(Long videoId) {
+
+        return videoRepository.findById(videoId)
+                .orElseThrow(() ->
+                        new VideoNotFoundException(
+                                "Video not found with id: "
+                                        + videoId
+                        )
+                );
+    }
+
+    /*
+     * Video Streaming
+     */
     public ResourceRegion streamVideo(
             Long videoId,
             String rangeHeader
-    ) throws IOException {
+    ) throws Exception {
 
         Video video =
                 videoRepository.findById(videoId)
@@ -125,8 +165,30 @@ public class VideoService {
                                 )
                         );
 
+        /*
+         * Create temp streaming directory
+         */
+        Files.createDirectories(
+                Paths.get(TEMP_STREAM_DIR)
+        );
+
+        /*
+         * Temp local file path
+         */
+        String tempFilePath =
+                TEMP_STREAM_DIR
+                        + video.getFileName();
+
+        /*
+         * Download file from MinIO
+         */
+        objectStorageService.downloadFile(
+                video.getObjectKey(),
+                tempFilePath
+        );
+
         Path path =
-                Paths.get(video.getFilePath());
+                Paths.get(tempFilePath);
 
         UrlResource resource =
                 new UrlResource(path.toUri());

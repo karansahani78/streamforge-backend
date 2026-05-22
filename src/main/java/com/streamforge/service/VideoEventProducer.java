@@ -11,10 +11,21 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class VideoEventProducer {
+
     private final RabbitTemplate rabbitTemplate;
 
-    public void sendVideoProcessingEvent(VideoProcessingMessage message){
-        rabbitTemplate.convertAndSend(RabbitMQConfig.VIDEO_PROCESSING_QUEUE, message);
-        log.info("Video processing event sent for videos: {}", message.getVideoId());
+    public void sendVideoProcessingEvent(
+            VideoProcessingMessage message
+    ) {
+
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.VIDEO_PROCESSING_QUEUE,
+                message
+        );
+
+        log.info(
+                "Video processing event sent for video ID: {}",
+                message.getVideoId()
+        );
     }
 }
